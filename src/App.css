@@ -165,6 +165,27 @@ button:hover {
   color: var(--text-muted);
 }
 
+.label-cell-tag {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.label-table-encoders {
+  margin-top: 20px;
+}
+
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
 .label-table {
   width: 100%;
   border-collapse: collapse;

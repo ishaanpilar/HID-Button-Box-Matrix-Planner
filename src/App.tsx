@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { BOARD_LIST, BOARDS, type BoardId } from "./boards";
-import { computeMatrix } from "./matrix";
+import { computePlan } from "./plan";
 import { generateSketch } from "./sketchGen";
 import { WiringDiagram } from "./WiringDiagram";
 import { LabelSheet } from "./LabelSheet";
@@ -9,20 +9,28 @@ import "./App.css";
 
 function App() {
   const [boardId, setBoardId] = useState<BoardId>("pro-micro");
-  const [buttonCount, setButtonCount] = useState(20);
+  const [momentaryButtons, setMomentaryButtons] = useState(20);
+  const [encoderCount, setEncoderCount] = useState(0);
+  const [encodersHavePush, setEncodersHavePush] = useState(true);
 
   const board = BOARDS[boardId];
-  const result = useMemo(() => computeMatrix(buttonCount, board), [buttonCount, board]);
+  const config = { momentaryButtons, encoderCount, encodersHavePush };
+  const isEmpty = momentaryButtons === 0 && encoderCount === 0;
+  const result = useMemo(
+    () => (isEmpty ? null : computePlan(config, board)),
+    [momentaryButtons, encoderCount, encodersHavePush, board, isEmpty]
+  );
 
-  const sketch = result.ok ? generateSketch(board, result.plan) : null;
+  const sketch = result?.ok ? generateSketch(result.plan) : null;
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>Button Box Matrix Planner</h1>
         <p>
-          Type in how many momentary buttons you want and pick a board — get the matrix wiring
-          diagram, the diode plan, an Arduino/HID sketch, and a button-number label sheet.
+          Type in how many momentary buttons and rotary encoders you want and pick a board — get
+          the matrix wiring diagram, the diode plan, encoder pin routing, an Arduino/HID sketch,
+          and a button-number label sheet.
         </p>
       </header>
 
@@ -31,11 +39,32 @@ function App() {
           Momentary buttons
           <input
             type="number"
-            min={1}
+            min={0}
             max={64}
-            value={buttonCount}
-            onChange={(e) => setButtonCount(Math.max(1, Number(e.target.value) || 1))}
+            value={momentaryButtons}
+            onChange={(e) => setMomentaryButtons(Math.max(0, Number(e.target.value) || 0))}
           />
+        </label>
+
+        <label>
+          Rotary encoders
+          <input
+            type="number"
+            min={0}
+            max={16}
+            value={encoderCount}
+            onChange={(e) => setEncoderCount(Math.max(0, Number(e.target.value) || 0))}
+          />
+        </label>
+
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={encodersHavePush}
+            onChange={(e) => setEncodersHavePush(e.target.checked)}
+            disabled={encoderCount === 0}
+          />
+          Encoders have a push-button (adds to matrix)
         </label>
 
         <label>
@@ -50,43 +79,71 @@ function App() {
         </label>
       </section>
 
-      {!result.ok && (
+      {isEmpty && (
+        <div className="error-box">
+          <p>Add at least one momentary button or rotary encoder to generate a plan.</p>
+        </div>
+      )}
+
+      {result && !result.ok && (
         <div className="error-box">
           {result.error.kind === "too-many-buttons" && (
             <p>
               This template supports up to {result.error.maxHidButtons} HID buttons per board
-              (default gamepad HID report size). Reduce your button count or split across two
-              microcontrollers.
+              (default gamepad HID report size), but this configuration needs {result.error.requested}{" "}
+              (momentary buttons + encoder push-buttons + 2 per encoder for CW/CCW). Reduce your
+              control count or split across two microcontrollers.
             </p>
           )}
           {result.error.kind === "not-enough-pins" && (
             <p>
-              {board.shortName} doesn't expose enough safe matrix pins for {buttonCount} buttons —
-              needs roughly {result.error.needed} pins, only {result.error.available} available in
+              {board.shortName} doesn't expose enough safe matrix pins for this many buttons —
+              needs roughly {result.error.needed} pins, only {result.error.available} left after
+              reserving encoder pins.
+            </p>
+          )}
+          {result.error.kind === "not-enough-encoder-pins" && (
+            <p>
+              {board.shortName} doesn't expose enough safe pins for {encoderCount} encoders — needs{" "}
+              {result.error.needed} pins (2 per encoder), only {result.error.available} available in
               this profile.
             </p>
           )}
         </div>
       )}
 
-      {result.ok && (
+      {result?.ok && (
         <>
           <section className="summary-card">
-            <h2>Matrix Plan</h2>
+            <h2>Plan Summary</h2>
             <ul className="summary-list">
               <li>
-                <strong>{result.plan.rows}</strong> rows &times; <strong>{result.plan.cols}</strong>{" "}
-                cols = {result.plan.totalPins} pins used on {board.shortName}
+                <strong>{result.plan.totalHidButtons}</strong> total HID buttons on {board.shortName}
               </li>
-              <li>
-                Row pins: <code>{result.plan.rowPins.join(", ")}</code>
-              </li>
-              <li>
-                Column pins: <code>{result.plan.colPins.join(", ")}</code>
-              </li>
-              <li>Diode orientation: {result.plan.diode.orientation}</li>
+              {result.plan.matrix && (
+                <>
+                  <li>
+                    <strong>{result.plan.matrix.rows}</strong> rows &times;{" "}
+                    <strong>{result.plan.matrix.cols}</strong> cols = {result.plan.matrix.totalPins}{" "}
+                    matrix pins
+                  </li>
+                  <li>
+                    Row pins: <code>{result.plan.matrix.rowPins.join(", ")}</code>
+                  </li>
+                  <li>
+                    Column pins: <code>{result.plan.matrix.colPins.join(", ")}</code>
+                  </li>
+                  <li>Diode orientation: {result.plan.matrix.diode.orientation}</li>
+                </>
+              )}
+              {result.plan.encoders.length > 0 && (
+                <li>
+                  {result.plan.encoders.length} encoder(s) direct-wired to {result.plan.encoders.length * 2}{" "}
+                  dedicated pins (not part of the matrix)
+                </li>
+              )}
             </ul>
-            <p className="diode-reasoning">{result.plan.diode.reasoning}</p>
+            {result.plan.matrix && <p className="diode-reasoning">{result.plan.matrix.diode.reasoning}</p>}
             {result.plan.warnings.map((w, i) => (
               <p className="warning" key={i}>
                 ⚠ {w}
@@ -129,7 +186,7 @@ function App() {
 
           <section className="label-card">
             <h2>HID Button Label Sheet</h2>
-            <LabelSheet plan={result.plan} board={board} />
+            <LabelSheet plan={result.plan} />
             <button className="no-print" onClick={() => window.print()}>
               Print / Save as PDF
             </button>

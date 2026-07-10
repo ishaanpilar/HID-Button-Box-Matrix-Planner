@@ -16,6 +16,13 @@ export interface BoardProfile {
   shortName: string;
   /** Pin labels usable for matrix rows/cols, in the order they'll be assigned. */
   matrixPins: string[];
+  /**
+   * Subset of matrixPins that support attachInterrupt()-style hardware
+   * interrupts, used to give rotary encoders priority access to pins that
+   * can catch fast quadrature transitions without being missed between
+   * matrix scan passes.
+   */
+  interruptPins: string[];
   /** Absolute cap on HID button count this sketch template supports. */
   maxHidButtons: number;
   hidStrategy: "arduino-joystick" | "tinyusb-gamepad";
@@ -32,10 +39,15 @@ export const BOARDS: Record<BoardId, BoardProfile> = {
       "2", "3", "4", "5", "6", "7", "8", "9",
       "10", "14", "15", "16", "18", "19", "20", "21",
     ],
+    // 32U4 only has true external-interrupt pins on 2, 3, 7 (INT2/INT1/INT6) —
+    // everything else is polled, which is fine for the matrix scan but risks
+    // missing fast encoder quadrature transitions.
+    interruptPins: ["2", "3", "7"],
     maxHidButtons: 32,
     hidStrategy: "arduino-joystick",
     notes: [
       "Requires the \"Joystick\" library by Matthew Heironimus (Arduino Library Manager: \"Joystick\").",
+      "Requires the \"Encoder\" library by Paul Stoffregen (Arduino Library Manager: \"Encoder\") if you have rotary encoders.",
       "Pins 0 (RX) / 1 (TX) are reserved here in case you want Serial for debugging — free them up if you need 2 more matrix pins.",
       "Native USB HID — no bootloader/driver tricks needed on 32U4 boards.",
     ],
@@ -50,10 +62,17 @@ export const BOARDS: Record<BoardId, BoardProfile> = {
       "GP0", "GP1", "GP2", "GP3", "GP4", "GP5", "GP6", "GP7",
       "GP8", "GP9", "GP10", "GP26", "GP27", "GP28", "GP29",
     ],
+    // Every RP2040 GPIO can attachInterrupt() — the PIO/GPIO controller isn't
+    // limited to a handful of external-interrupt lines like AVR.
+    interruptPins: [
+      "GP0", "GP1", "GP2", "GP3", "GP4", "GP5", "GP6", "GP7",
+      "GP8", "GP9", "GP10", "GP26", "GP27", "GP28", "GP29",
+    ],
     maxHidButtons: 32,
     hidStrategy: "tinyusb-gamepad",
     notes: [
       "Requires the \"Adafruit TinyUSB Library\" (Arduino Library Manager) and Tools > USB Stack: \"Adafruit TinyUSB\".",
+      "Requires the \"Encoder\" library by Paul Stoffregen if you have rotary encoders.",
       "GPIO numbers are logical GP numbers from the Earle Philhower arduino-pico core — confirm against your specific board's silkscreen, boards differ.",
       "Avoid GP23-25 on boards derived directly from Raspberry Pi Pico (SMPS/LED/VBUS-sense) — already excluded here.",
     ],
@@ -70,10 +89,18 @@ export const BOARDS: Record<BoardId, BoardProfile> = {
       "10", "11", "12", "13", "14", "15", "16", "17",
       "18", "21", "35", "36", "37",
     ],
+    // Every ESP32-S3 GPIO can attachInterrupt() via the GPIO interrupt
+    // controller — not limited to specific pins like AVR.
+    interruptPins: [
+      "1", "2", "4", "5", "6", "7", "8", "9",
+      "10", "11", "12", "13", "14", "15", "16", "17",
+      "18", "21", "35", "36", "37",
+    ],
     maxHidButtons: 32,
     hidStrategy: "tinyusb-gamepad",
     notes: [
       "Requires the \"Adafruit TinyUSB Library\" and Tools > USB Mode: \"USB-OTG (TinyUSB)\".",
+      "Requires the \"Encoder\" library by Paul Stoffregen if you have rotary encoders.",
       "Pin safety depends on your exact module (WROOM-1 vs N16R8 etc.) — GPIO26-32 are frequently reserved for octal PSRAM and are excluded here; GPIO35-37 are only free on modules without octal PSRAM. Verify against your module's datasheet.",
       "GPIO0/3/45/46 (strapping) and 19/20 (native USB D-/D+) are excluded.",
     ],

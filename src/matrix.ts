@@ -1,5 +1,3 @@
-import type { BoardProfile } from "./boards";
-
 export interface MatrixCell {
   row: number;
   col: number;
@@ -10,6 +8,8 @@ export interface MatrixCell {
   rowPin: string;
   colPin: string;
   isUnused: boolean;
+  /** Override label, e.g. "Encoder 2 push" for a push-button folded into the matrix. */
+  label?: string;
 }
 
 export interface MatrixPlan {
@@ -28,19 +28,15 @@ export interface MatrixPlan {
   warnings: string[];
 }
 
-export type MatrixError =
-  | { kind: "too-many-buttons"; maxHidButtons: number }
-  | { kind: "not-enough-pins"; needed: number; available: number };
+export type MatrixError = { kind: "not-enough-pins"; needed: number; available: number };
 
-export type MatrixResult =
-  | { ok: true; plan: MatrixPlan }
-  | { ok: false; error: MatrixError };
+export type MatrixResult = { ok: true; plan: MatrixPlan } | { ok: false; error: MatrixError };
 
 /**
  * Finds the row x col matrix with the fewest total pins (rows + cols) that
- * fits `buttonCount` buttons within the board's available matrix pins.
- * Ties are broken toward a squarer matrix (smaller |rows - cols|), since
- * that tends to produce a more compact, easier-to-wire physical layout.
+ * fits `buttonCount` buttons within the available pin pool. Ties are broken
+ * toward a squarer matrix (smaller |rows - cols|), since that tends to
+ * produce a more compact, easier-to-wire physical layout.
  */
 function bestFactorization(
   buttonCount: number,
@@ -66,18 +62,15 @@ function bestFactorization(
   return best ? { rows: best.rows, cols: best.cols } : null;
 }
 
-export function computeMatrix(
-  buttonCount: number,
-  board: BoardProfile
-): MatrixResult {
-  if (buttonCount > board.maxHidButtons) {
-    return {
-      ok: false,
-      error: { kind: "too-many-buttons", maxHidButtons: board.maxHidButtons },
-    };
-  }
-
-  const available = board.matrixPins.length;
+/**
+ * Builds a matrix plan for `buttonCount` momentary switches (including any
+ * encoder push-buttons folded in by the caller) out of `availablePins`.
+ * HID indices are assigned row-major starting at 0 — callers that also have
+ * non-matrix HID controls (e.g. encoder rotation pulses) should offset their
+ * own indices to start after `buttonCount`.
+ */
+export function buildMatrix(buttonCount: number, availablePins: string[]): MatrixResult {
+  const available = availablePins.length;
   const factorization = bestFactorization(buttonCount, available);
 
   if (!factorization) {
@@ -92,8 +85,8 @@ export function computeMatrix(
   }
 
   const { rows, cols } = factorization;
-  const rowPins = board.matrixPins.slice(0, rows);
-  const colPins = board.matrixPins.slice(rows, rows + cols);
+  const rowPins = availablePins.slice(0, rows);
+  const colPins = availablePins.slice(rows, rows + cols);
 
   const cells: MatrixCell[] = [];
   let hidIndex = 0;
